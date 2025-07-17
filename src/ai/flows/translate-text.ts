@@ -26,12 +26,28 @@ export async function translateText(input: TranslateTextInput): Promise<Translat
   return translateTextFlow(input);
 }
 
+const simpleTranslateTool = ai.defineTool(
+  {
+    name: 'simpleTranslateTool',
+    description: 'A simple translation tool.',
+    inputSchema: TranslateTextInputSchema,
+    outputSchema: TranslateTextOutputSchema,
+  },
+  async (input) => {
+    const {text} = await ai.generate({
+      prompt: `Translate the following text into ${input.targetLanguage}: ${input.text}`,
+      model: 'googleai/gemini-2.0-flash',
+    });
+    return {translation: text};
+  },
+);
+
 const translateTextPrompt = ai.definePrompt({
   name: 'translateTextPrompt',
-  input: {schema: TranslateTextInputSchema},
+  tools: [simpleTranslateTool],
   output: {schema: TranslateTextOutputSchema},
-  prompt: `You are an expert multilingual translator. Translate the following text into {{{targetLanguage}}}. Return ONLY the translated text, with no additional commentary or explanation.
-
+  prompt: `You are an expert multilingual translator. Translate the following text into {{{targetLanguage}}}.
+  
 Text to translate:
 "{{{text}}}"`,
 });
@@ -42,8 +58,8 @@ const translateTextFlow = ai.defineFlow(
     inputSchema: TranslateTextInputSchema,
     outputSchema: TranslateTextOutputSchema,
   },
-  async input => {
+  async (input) => {
     const {output} = await translateTextPrompt(input);
     return output!;
-  }
+  },
 );
