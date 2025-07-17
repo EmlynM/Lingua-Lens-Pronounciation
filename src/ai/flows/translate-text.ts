@@ -30,7 +30,10 @@ const translateTextPrompt = ai.definePrompt({
   name: 'translateTextPrompt',
   input: {schema: TranslateTextInputSchema},
   output: {schema: TranslateTextOutputSchema},
-  prompt: `Translate the following text into {{{targetLanguage}}}:\n\n{{{text}}}`,
+  prompt: `You are an expert multilingual translator. Translate the following text into {{{targetLanguage}}}. Return ONLY the translated text, with no additional commentary or explanation.
+
+Text to translate:
+"{{{text}}}"`,
 });
 
 const translateTextFlow = ai.defineFlow(
