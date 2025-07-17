@@ -25,6 +25,11 @@ const languages = [
   { value: "Russian", label: "Russian" },
   { value: "Arabic", label: "Arabic" },
   { value: "Portuguese", label: "Portuguese" },
+  { value: "Hindi", label: "Hindi" },
+  { value: "Bengali", label: "Bengali" },
+  { value: "Tamil", label: "Tamil" },
+  { value: "Telugu", label: "Telugu" },
+  { value: "Marathi", label: "Marathi" },
 ];
 
 export function LanguageSelector({ value, onChange, disabled }: LanguageSelectorProps) {
