@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useRef, ChangeEvent } from "react";
+import { useState, useRef, ChangeEvent, useEffect } from "react";
 import {
   ArrowRight,
   BookText,
@@ -12,6 +13,8 @@ import {
   Volume2,
   FileText,
   Mic,
+  X,
+  Aperture,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,6 +32,13 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { translateText } from "@/ai/flows/translate-text";
 import { defineMeaning } from "@/ai/flows/define-meaning";
@@ -53,9 +63,68 @@ export default function Translator() {
   const [isTranslating, setIsTranslating] = useState(false);
   const [isDefining, setIsDefining] = useState(false);
   const [isPronouncing, setIsPronouncing] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    return () => {
+      // Stop camera stream when component unmounts
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
+
+  const requestCameraPermission = async () => {
+    if (hasCameraPermission) {
+      setIsCameraOpen(true);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      streamRef.current = stream;
+      setHasCameraPermission(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsCameraOpen(true);
+    } catch (error) {
+      console.error("Error accessing camera:", error);
+      setHasCameraPermission(false);
+      toast({
+        variant: "destructive",
+        title: "Camera Access Denied",
+        description: "Please enable camera permissions in your browser settings to use this app.",
+      });
+    }
+  };
+  
+  const closeCamera = () => {
+    setIsCameraOpen(false);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  };
+  
+  const handleCapture = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement("canvas");
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const context = canvas.getContext("2d");
+      if(context){
+        context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        const dataUri = canvas.toDataURL("image/jpeg");
+        processDataUri(dataUri);
+      }
+      closeCamera();
+    }
+  };
 
   const handleTranslate = async () => {
     if (!inputText.trim()) {
@@ -156,35 +225,35 @@ export default function Translator() {
     window.speechSynthesis.speak(utterance);
   };
   
-  const processFile = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const dataUri = e.target?.result as string;
-      setIsProcessing(true);
-      setInputText("Extracting text from image...");
-      try {
-        const result = await extractTextFromImage({ imageDataUri: dataUri });
-        setInputText(result.extractedText);
-      } catch (error) {
-        console.error("Error extracting text from image", error);
-        toast({
-          title: "Text Extraction Failed",
-          description: "Could not extract text from the image. Please try a different image.",
-          variant: "destructive",
-        });
-        setInputText("");
-      } finally {
-        setIsProcessing(false);
-      }
-    };
-    reader.readAsDataURL(file);
+  const processDataUri = async (dataUri: string) => {
+    setIsProcessing(true);
+    setInputText("Extracting text from image...");
+    try {
+      const result = await extractTextFromImage({ imageDataUri: dataUri });
+      setInputText(result.extractedText);
+    } catch (error) {
+      console.error("Error extracting text from image", error);
+      toast({
+        title: "Text Extraction Failed",
+        description: "Could not extract text from the image. Please try a different image.",
+        variant: "destructive",
+      });
+      setInputText("");
+    } finally {
+      setIsProcessing(false);
+    }
   }
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       if (file.type.startsWith("image/")) {
-        processFile(file);
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const dataUri = e.target?.result as string;
+          processDataUri(dataUri);
+        };
+        reader.readAsDataURL(file);
       } else {
         toast({
           title: "Invalid File",
@@ -194,13 +263,6 @@ export default function Translator() {
       }
     }
   };
-  
-  const handleCameraScan = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if(file) {
-      processFile(file);
-    }
-  }
 
   const handleHistorySelect = (entry: TranslationEntry) => {
     setInputText(entry.originalText);
@@ -213,6 +275,7 @@ export default function Translator() {
   const isBusy = isTranslating || isProcessing;
 
   return (
+    <>
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
       <div className="flex flex-col gap-8">
         <Card className="overflow-hidden">
@@ -252,17 +315,9 @@ export default function Translator() {
                   <Upload className="mr-2" />
                   Upload Image
                 </Button>
-                <input
-                  type="file"
-                  ref={cameraInputRef}
-                  onChange={handleCameraScan}
-                  className="hidden"
-                  accept="image/*"
-                  capture="environment"
-                />
                 <Button
                   variant="outline"
-                  onClick={() => cameraInputRef.current?.click()}
+                  onClick={requestCameraPermission}
                   disabled={isBusy}
                 >
                   <Camera className="mr-2" />
@@ -425,5 +480,38 @@ export default function Translator() {
         </CardFooter>
       </Card>
     </div>
+
+    <Dialog open={isCameraOpen} onOpenChange={setIsCameraOpen}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Scan Text with Camera</DialogTitle>
+        </DialogHeader>
+        <div className="relative">
+            <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
+            {hasCameraPermission === false && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-md">
+                <Alert variant="destructive" className="w-auto">
+                    <AlertTitle>Camera Access Denied</AlertTitle>
+                    <AlertDescription>
+                        Please allow camera access in your browser to use this feature.
+                    </AlertDescription>
+                </Alert>
+                </div>
+            )}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+                <Button size="icon" className="w-16 h-16 rounded-full" onClick={handleCapture} disabled={hasCameraPermission !== true}>
+                    <Aperture className="w-8 h-8"/>
+                    <span className="sr-only">Capture</span>
+                </Button>
+            </div>
+             <Button size="icon" variant="ghost" className="absolute top-4 right-4 rounded-full" onClick={closeCamera}>
+                <X />
+                <span className="sr-only">Close Camera</span>
+            </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
-}
+
+    
