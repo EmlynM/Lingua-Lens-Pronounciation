@@ -209,11 +209,15 @@ export default function Translator() {
         : `data:image/jpeg;base64,${dataUri}`;
       const result = await extractTextFromImage({ imageDataUri });
       setInputText(result.extractedText);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error extracting text from image", error);
+      let description = "Could not extract text from the image. Please try a different image.";
+      if (error.message?.includes('503')) {
+        description = "The AI model for text extraction is currently busy. Please try again in a moment.";
+      }
       toast({
         title: "Text Extraction Failed",
-        description: "Could not extract text from the image. Please try a different image.",
+        description: description,
         variant: "destructive",
       });
       setInputText("");
@@ -514,3 +518,5 @@ export default function Translator() {
     </Dialog>
     </>
   );
+  
+    
