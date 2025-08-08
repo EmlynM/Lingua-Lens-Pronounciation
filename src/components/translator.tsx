@@ -11,6 +11,7 @@ import {
   Upload,
   Volume2,
   FileText,
+  Mic,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +32,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { translateText } from "@/ai/flows/translate-text";
 import { defineMeaning } from "@/ai/flows/define-meaning";
+import { pronounceText } from "@/ai/flows/pronounce-text";
 import { LanguageSelector } from "./language-selector";
 import { useHistory } from "@/hooks/use-history";
 import type { TranslationEntry } from "@/types";
@@ -45,8 +47,10 @@ export default function Translator() {
   const [targetLanguage, setTargetLanguage] = useState("Spanish");
   const [translation, setTranslation] = useState<string | null>(null);
   const [meaning, setMeaning] = useState<string | null>(null);
+  const [pronunciation, setPronunciation] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isDefining, setIsDefining] = useState(false);
+  const [isPronouncing, setIsPronouncing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +67,7 @@ export default function Translator() {
     setIsTranslating(true);
     setTranslation(null);
     setMeaning(null);
+    setPronunciation(null);
 
     try {
       const result = await translateText({ text: inputText, targetLanguage });
@@ -104,11 +109,48 @@ export default function Translator() {
       setIsDefining(false);
     }
   };
+  
+  const handlePronunciation = async () => {
+    if (!translation) return;
+    setIsPronouncing(true);
+    setPronunciation(null);
+    try {
+      const result = await pronounceText({ text: translation, language: targetLanguage });
+      setPronunciation(result.pronunciation);
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Pronunciation Failed",
+        description: "Could not get the pronunciation. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPronouncing(false);
+    }
+  };
 
-  const handlePronounce = () => {
+  const handleListen = () => {
     if (!translation || typeof window === "undefined") return;
     const utterance = new SpeechSynthesisUtterance(translation);
-    utterance.lang = "en-US"; // This could be dynamically set based on target language if more voices are supported
+    // This is a simple mapping, a more robust solution would be needed for all languages
+    const langCodeMap: { [key: string]: string } = {
+        'Spanish': 'es-ES',
+        'French': 'fr-FR',
+        'German': 'de-DE',
+        'Japanese': 'ja-JP',
+        'Mandarin Chinese': 'zh-CN',
+        'Italian': 'it-IT',
+        'Korean': 'ko-KR',
+        'Russian': 'ru-RU',
+        'Arabic': 'ar-SA',
+        'Portuguese': 'pt-BR',
+        'Hindi': 'hi-IN',
+        'Bengali': 'bn-IN',
+        'Tamil': 'ta-IN',
+        'Telugu': 'te-IN',
+        'Marathi': 'mr-IN',
+    };
+    utterance.lang = langCodeMap[targetLanguage] || 'en-US';
     window.speechSynthesis.speak(utterance);
   };
 
@@ -146,6 +188,7 @@ export default function Translator() {
     setTargetLanguage(entry.language);
     setTranslation(entry.translatedText);
     setMeaning(null);
+    setPronunciation(null);
   };
 
   return (
@@ -295,8 +338,20 @@ export default function Translator() {
             </div>
           )}
 
+          {isPronouncing ? (
+            <div className="space-y-4 pt-4 border-t">
+              <Skeleton className="h-6 w-1/4" />
+              <Skeleton className="h-4 w-full" />
+            </div>
+          ) : pronunciation ? (
+            <div className="space-y-2 pt-4 border-t">
+              <h3 className="font-bold text-primary">Pronunciation</h3>
+              <p className="text-base font-mono leading-relaxed whitespace-pre-wrap">{pronunciation}</p>
+            </div>
+          ) : null}
+
           {isDefining ? (
-             <div className="space-y-4 pt-4">
+             <div className="space-y-4 pt-4 border-t">
               <Skeleton className="h-6 w-1/4" />
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-full" />
@@ -312,12 +367,25 @@ export default function Translator() {
         <CardFooter className="flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
-            onClick={handlePronounce}
+            onClick={handleListen}
             disabled={!translation || isTranslating}
             className="w-full sm:w-auto"
           >
             <Volume2 className="mr-2" />
             Listen
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handlePronunciation}
+            disabled={!translation || isTranslating || isPronouncing}
+            className="w-full sm:w-auto"
+          >
+            {isPronouncing ? (
+              <Loader2 className="animate-spin mr-2" />
+            ) : (
+              <Mic className="mr-2" />
+            )}
+            Pronunciation
           </Button>
           <Button
             onClick={handleDefine}
