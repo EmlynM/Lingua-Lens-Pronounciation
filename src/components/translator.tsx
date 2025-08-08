@@ -518,5 +518,4 @@ export default function Translator() {
     </Dialog>
     </>
   );
-  
-    
+}
