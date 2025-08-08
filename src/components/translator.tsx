@@ -229,7 +229,11 @@ export default function Translator() {
     setIsProcessing(true);
     setInputText("Extracting text from image...");
     try {
-      const result = await extractTextFromImage({ imageDataUri: dataUri });
+      // Fallback for images without a specified mimeType
+      const imageDataUri = dataUri.startsWith('data:')
+        ? dataUri
+        : `data:image/jpeg;base64,${dataUri}`;
+      const result = await extractTextFromImage({ imageDataUri });
       setInputText(result.extractedText);
     } catch (error) {
       console.error("Error extracting text from image", error);
