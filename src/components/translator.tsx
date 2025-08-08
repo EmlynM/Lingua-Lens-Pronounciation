@@ -68,63 +68,37 @@ export default function Translator() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
+    let stream: MediaStream | null = null;
+    if (isCameraOpen) {
+      const getCameraPermission = async () => {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment" },
+          });
+          setHasCameraPermission(true);
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        } catch (error) {
+          console.error("Error accessing camera:", error);
+          setHasCameraPermission(false);
+          toast({
+            variant: "destructive",
+            title: "Camera Access Denied",
+            description: "Please enable camera permissions in your browser settings to use this app.",
+          });
+        }
+      };
+      getCameraPermission();
+    }
     return () => {
-      // Stop camera stream when component unmounts
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, []);
-
-  const requestCameraPermission = async () => {
-    if (hasCameraPermission) {
-      setIsCameraOpen(true);
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      streamRef.current = stream;
-      setHasCameraPermission(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setIsCameraOpen(true);
-    } catch (error) {
-      console.error("Error accessing camera:", error);
-      setHasCameraPermission(false);
-      toast({
-        variant: "destructive",
-        title: "Camera Access Denied",
-        description: "Please enable camera permissions in your browser settings to use this app.",
-      });
-    }
-  };
-  
-  const closeCamera = () => {
-    setIsCameraOpen(false);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-  };
-  
-  const handleCapture = () => {
-    if (videoRef.current) {
-      const canvas = document.createElement("canvas");
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      const context = canvas.getContext("2d");
-      if(context){
-        context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-        const dataUri = canvas.toDataURL("image/jpeg");
-        processDataUri(dataUri);
-      }
-      closeCamera();
-    }
-  };
+  }, [isCameraOpen, toast]);
 
   const handleTranslate = async () => {
     if (!inputText.trim()) {
@@ -267,6 +241,21 @@ export default function Translator() {
       }
     }
   };
+  
+  const handleCapture = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement("canvas");
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const context = canvas.getContext("2d");
+      if (context) {
+        context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        const dataUri = canvas.toDataURL("image/jpeg");
+        processDataUri(dataUri);
+      }
+      setIsCameraOpen(false);
+    }
+  };
 
   const handleHistorySelect = (entry: TranslationEntry) => {
     setInputText(entry.originalText);
@@ -321,7 +310,7 @@ export default function Translator() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={requestCameraPermission}
+                  onClick={() => setIsCameraOpen(true)}
                   disabled={isBusy}
                 >
                   <Camera className="mr-2" />
@@ -489,33 +478,39 @@ export default function Translator() {
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Scan Text with Camera</DialogTitle>
+          <Button size="icon" variant="ghost" className="absolute top-2 right-2 rounded-full" onClick={() => setIsCameraOpen(false)}>
+              <X />
+              <span className="sr-only">Close Camera</span>
+          </Button>
         </DialogHeader>
         <div className="relative">
             <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
-            {hasCameraPermission === false && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-md">
-                <Alert variant="destructive" className="w-auto">
-                    <AlertTitle>Camera Access Denied</AlertTitle>
-                    <AlertDescription>
-                        Please allow camera access in your browser to use this feature.
-                    </AlertDescription>
-                </Alert>
+            <div className="absolute inset-0 flex items-center justify-center">
+              {hasCameraPermission === null && (
+                <div className="flex items-center gap-2 text-white">
+                  <Loader2 className="animate-spin" />
+                  <span>Requesting camera...</span>
                 </div>
-            )}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
-                <Button size="icon" className="w-16 h-16 rounded-full" onClick={handleCapture} disabled={hasCameraPermission !== true}>
-                    <Aperture className="w-8 h-8"/>
-                    <span className="sr-only">Capture</span>
-                </Button>
+              )}
+              {hasCameraPermission === false && (
+                  <Alert variant="destructive" className="w-auto">
+                      <AlertTitle>Camera Access Denied</AlertTitle>
+                      <AlertDescription>
+                          Please allow camera access in your browser to use this feature.
+                      </AlertDescription>
+                  </Alert>
+              )}
             </div>
-             <Button size="icon" variant="ghost" className="absolute top-4 right-4 rounded-full" onClick={closeCamera}>
-                <X />
-                <span className="sr-only">Close Camera</span>
-            </Button>
+            {hasCameraPermission === true && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+                  <Button size="icon" className="w-16 h-16 rounded-full" onClick={handleCapture}>
+                      <Aperture className="w-8 h-8"/>
+                      <span className="sr-only">Capture</span>
+                  </Button>
+              </div>
+            )}
         </div>
       </DialogContent>
     </Dialog>
     </>
   );
-
-    
