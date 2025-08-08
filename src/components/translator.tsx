@@ -33,6 +33,7 @@ import { useToast } from "@/hooks/use-toast";
 import { translateText } from "@/ai/flows/translate-text";
 import { defineMeaning } from "@/ai/flows/define-meaning";
 import { pronounceText } from "@/ai/flows/pronounce-text";
+import { extractTextFromImage } from "@/ai/flows/extract-text-from-image";
 import { LanguageSelector } from "./language-selector";
 import { useHistory } from "@/hooks/use-history";
 import type { TranslationEntry } from "@/types";
@@ -48,6 +49,7 @@ export default function Translator() {
   const [translation, setTranslation] = useState<string | null>(null);
   const [meaning, setMeaning] = useState<string | null>(null);
   const [pronunciation, setPronunciation] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isDefining, setIsDefining] = useState(false);
   const [isPronouncing, setIsPronouncing] = useState(false);
@@ -153,20 +155,40 @@ export default function Translator() {
     utterance.lang = langCodeMap[targetLanguage] || 'en-US';
     window.speechSynthesis.speak(utterance);
   };
+  
+  const processFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUri = e.target?.result as string;
+      setIsProcessing(true);
+      setInputText("Extracting text from image...");
+      try {
+        const result = await extractTextFromImage({ imageDataUri: dataUri });
+        setInputText(result.extractedText);
+      } catch (error) {
+        console.error("Error extracting text from image", error);
+        toast({
+          title: "Text Extraction Failed",
+          description: "Could not extract text from the image. Please try a different image.",
+          variant: "destructive",
+        });
+        setInputText("");
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.type === "text/plain") {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          setInputText(e.target?.result as string);
-        };
-        reader.readAsText(file);
+      if (file.type.startsWith("image/")) {
+        processFile(file);
       } else {
         toast({
           title: "Invalid File",
-          description: "Please upload a .txt file.",
+          description: "Please upload an image file (e.g., PNG, JPG).",
           variant: "destructive",
         });
       }
@@ -176,10 +198,7 @@ export default function Translator() {
   const handleCameraScan = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if(file) {
-        toast({
-            title: "Scan Successful (Demo)",
-            description: "In a real app, the text from this image would be extracted via OCR and placed here. For now, please type your text.",
-        });
+      processFile(file);
     }
   }
 
@@ -191,6 +210,8 @@ export default function Translator() {
     setPronunciation(null);
   };
 
+  const isBusy = isTranslating || isProcessing;
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
       <div className="flex flex-col gap-8">
@@ -198,7 +219,7 @@ export default function Translator() {
           <CardHeader>
             <CardTitle className="font-headline text-2xl">Your Text</CardTitle>
             <CardDescription>
-              Enter text, upload a file, or scan with your camera.
+              Enter text, upload an image, or scan with your camera.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -208,12 +229,12 @@ export default function Translator() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 className="h-36 resize-none"
-                disabled={isTranslating}
+                disabled={isBusy}
               />
               <LanguageSelector
                 value={targetLanguage}
                 onChange={setTargetLanguage}
-                disabled={isTranslating}
+                disabled={isBusy}
               />
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -221,15 +242,15 @@ export default function Translator() {
                   ref={fileInputRef}
                   onChange={handleFileChange}
                   className="hidden"
-                  accept=".txt"
+                  accept="image/*"
                 />
                 <Button
                   variant="outline"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isTranslating}
+                  disabled={isBusy}
                 >
                   <Upload className="mr-2" />
-                  Upload .txt
+                  Upload Image
                 </Button>
                 <input
                   type="file"
@@ -242,7 +263,7 @@ export default function Translator() {
                 <Button
                   variant="outline"
                   onClick={() => cameraInputRef.current?.click()}
-                  disabled={isTranslating}
+                  disabled={isBusy}
                 >
                   <Camera className="mr-2" />
                   Scan Text
@@ -253,15 +274,17 @@ export default function Translator() {
           <CardFooter>
             <Button
               onClick={handleTranslate}
-              disabled={isTranslating || !inputText.trim()}
+              disabled={isBusy || !inputText.trim()}
               className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
             >
-              {isTranslating ? (
+              {isProcessing ? (
+                <Loader2 className="animate-spin mr-2" />
+              ) : isTranslating ? (
                 <Loader2 className="animate-spin mr-2" />
               ) : (
                 <ArrowRight className="mr-2" />
               )}
-              Translate
+              {isProcessing ? "Processing..." : "Translate"}
             </Button>
           </CardFooter>
         </Card>
@@ -368,7 +391,7 @@ export default function Translator() {
           <Button
             variant="outline"
             onClick={handleListen}
-            disabled={!translation || isTranslating}
+            disabled={!translation || isBusy}
             className="w-full sm:w-auto"
           >
             <Volume2 className="mr-2" />
@@ -377,7 +400,7 @@ export default function Translator() {
           <Button
             variant="outline"
             onClick={handlePronunciation}
-            disabled={!translation || isTranslating || isPronouncing}
+            disabled={!translation || isBusy || isPronouncing}
             className="w-full sm:w-auto"
           >
             {isPronouncing ? (
@@ -389,7 +412,7 @@ export default function Translator() {
           </Button>
           <Button
             onClick={handleDefine}
-            disabled={!translation || isTranslating || isDefining}
+            disabled={!translation || isBusy || isDefining}
             className="w-full sm:w-auto"
           >
             {isDefining ? (
